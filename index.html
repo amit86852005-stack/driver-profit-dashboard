@@ -1,0 +1,786 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DriveProfit – Smart Driver Earnings Dashboard</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Lucide Icons CDN -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,900;1,900&display=swap" rel="stylesheet">
+    
+    <!-- jsPDF and jsPDF-AutoTable CDNs for PDF Export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+
+    <style>
+        :root {
+            --primary: #f97316; /* Orange 500 */
+            --primary-light: #ffedd5;
+            --success: #10b981; /* Emerald 500 */
+            --danger: #ef4444; /* Rose 500 */
+            --bg: #f8fafc; /* Slate 50 */
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg);
+            color: #1e293b;
+        }
+
+        .premium-card {
+            background: white;
+            border-radius: 1rem;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .premium-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+        }
+
+        .stat-card-green { border-top: 4px solid var(--success); }
+        .stat-card-orange { border-top: 4px solid var(--primary); }
+        .stat-card-red { border-top: 4px solid var(--danger); }
+        
+        .pulse-alert {
+            animation: pulse-red 2s infinite;
+        }
+
+        @keyframes pulse-red {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+
+        .shake {
+            animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+        }
+
+        @keyframes shake {
+            10%, 90% { transform: translate3d(-1px, 0, 0); }
+            20%, 80% { transform: translate3d(2px, 0, 0); }
+            30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+            40%, 60% { transform: translate3d(4px, 0, 0); }
+        }
+
+        .glass-tips {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(249, 115, 22, 0.1);
+        }
+
+        .custom-input {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 0.5rem;
+            outline: none;
+            transition: border-color 0.2s, ring 0.2s;
+        }
+
+        .custom-input:focus {
+            border-color: var(--primary);
+            /* Removed invalid 'ring' property */
+        }
+
+        .title-serif {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+        }
+
+        /* Animation for table rows */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .animate-fade-in {
+            animation: fadeIn 0.4s ease-out forwards;
+        }
+
+        /* Chart container constraint */
+        .chart-container {
+            position: relative;
+            height: 300px;
+            width: 100%;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+    </style>
+</head>
+<body class="min-h-screen p-4 md:p-8 lg:p-12">
+
+    <!-- Global Loss Alert Banner -->
+    <div id="globalLossBanner" class="hidden max-w-7xl mx-auto mb-6 p-4 bg-rose-600 text-white rounded-xl items-center justify-between shadow-lg animate-fade-in">
+        <div class="flex items-center gap-3">
+            <span class="p-2 bg-rose-500 rounded-lg"><i data-lucide="alert-octagon"></i></span>
+            <div>
+                <h4 class="font-bold">⚠️ Warning: Operational Loss Detected</h4>
+                <p class="text-rose-100 text-sm">Your net profit is negative today. Review expenses or increase ride volume.</p>
+            </div>
+        </div>
+        <button onclick="this.parentElement.style.display='none'" class="p-2 hover:bg-rose-500 rounded-lg transition-colors">
+            <i data-lucide="x"></i>
+        </button>
+    </div>
+
+    <!-- Header -->
+    <header class="max-w-7xl mx-auto mb-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+            <h1 class="text-4xl font-bold tracking-tight flex items-center gap-2">
+                <span class="text-orange-500"><i data-lucide="zap"></i></span>
+                Drive<span class="title-serif text-slate-800">Profit</span>
+            </h1>
+            <p class="text-slate-500 mt-1">Smarter earnings for every mile you drive.</p>
+        </div>
+        <div class="flex items-center gap-3">
+            <button id="exportBtn" class="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors shadow-sm">
+                <i data-lucide="download" class="w-4 h-4"></i>
+                Export PDF
+            </button>
+            <button id="resetAllBtn" class="flex items-center gap-2 px-4 py-2 bg-rose-50 text-rose-600 border border-rose-100 rounded-lg text-sm font-medium hover:bg-rose-100 transition-colors">
+                <i data-lucide="trash-2" class="w-4 h-4"></i>
+                Reset Data
+            </button>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8">
+        
+        <!-- Left Column: Stats & Charts -->
+        <div class="lg:col-span-8 space-y-8">
+            
+            <!-- Summary Cards -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div class="premium-card p-6 stat-card-orange">
+                    <div class="flex justify-between items-start mb-4">
+                        <span class="p-2 bg-orange-50 text-orange-500 rounded-lg">
+                            <i data-lucide="wallet"></i>
+                        </span>
+                    </div>
+                    <h3 class="text-slate-500 text-sm font-medium uppercase tracking-wider">Total Earnings</h3>
+                    <p class="text-2xl font-bold mt-1">₹<span id="totalEarnings">0</span></p>
+                </div>
+
+                <div class="premium-card p-6 stat-card-red">
+                    <div class="flex justify-between items-start mb-4">
+                        <span class="p-2 bg-rose-50 text-rose-500 rounded-lg">
+                            <i data-lucide="fuel"></i>
+                        </span>
+                    </div>
+                    <h3 class="text-slate-500 text-sm font-medium uppercase tracking-wider">Total Expenses</h3>
+                    <p class="text-2xl font-bold mt-1">₹<span id="totalExpenses">0</span></p>
+                </div>
+
+                <div id="profitCard" class="premium-card p-6">
+                    <div class="flex justify-between items-start mb-4">
+                        <span id="profitIconBg" class="p-2 bg-emerald-50 text-emerald-500 rounded-lg">
+                            <i data-lucide="trending-up" id="profitIcon"></i>
+                        </span>
+                    </div>
+                    <h3 class="text-slate-500 text-sm font-medium uppercase tracking-wider">Net Profit</h3>
+                    <p class="text-2xl font-bold mt-1">₹<span id="totalProfit">0</span></p>
+                </div>
+
+                <div class="premium-card p-6 bg-slate-50 border-t-4 border-slate-300">
+                    <div class="flex justify-between items-start mb-4">
+                        <span class="p-2 bg-slate-100 text-slate-500 rounded-lg">
+                            <i data-lucide="calendar-days"></i>
+                        </span>
+                    </div>
+                    <h3 class="text-slate-500 text-sm font-medium uppercase tracking-wider">Monthly Projection</h3>
+                    <p class="text-2xl font-bold mt-1">₹<span id="monthlyProjection">0</span></p>
+                </div>
+            </div>
+
+            <!-- Main Chart Section -->
+            <div class="premium-card p-8">
+                <div class="flex justify-between items-center mb-6">
+                    <div>
+                        <h2 class="text-xl font-bold">Performance Analytics</h2>
+                        <p class="text-sm text-slate-500">Weekly trends of your driving business.</p>
+                    </div>
+                    <div class="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-slate-400">
+                        <span class="flex items-center gap-1"><span class="w-3 h-3 bg-orange-500 rounded-full"></span> Earnings</span>
+                        <span class="flex items-center gap-1"><span class="w-3 h-3 bg-rose-500 rounded-full"></span> Expenses</span>
+                        <span class="flex items-center gap-1"><span class="w-3 h-3 bg-emerald-500 rounded-full"></span> Profit</span>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="performanceChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Profit Breakdown & Insights -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="premium-card p-6">
+                    <h2 class="text-lg font-bold mb-4">Expense Analysis</h2>
+                    <div id="expenseBreakdown" class="space-y-4">
+                        <!-- Progress bars will be injected here -->
+                        <p class="text-slate-400 italic text-sm">Add data to see breakdown...</p>
+                    </div>
+                </div>
+
+                <div class="premium-card p-6 bg-slate-900 text-white">
+                    <h2 class="text-lg font-bold mb-4 flex items-center gap-2">
+                        <i data-lucide="bar-chart-3" class="text-orange-400"></i>
+                        Weekly Insights
+                    </h2>
+                    <div class="space-y-6">
+                        <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+                            <span class="text-slate-400 text-sm">Best Day Earnings</span>
+                            <span class="font-bold text-orange-400">₹<span id="bestEarnings">0</span></span>
+                        </div>
+                        <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+                            <span class="text-slate-400 text-sm">Highest Trip Count</span>
+                            <span class="font-bold" id="highestTrips">0</span>
+                        </div>
+                        <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+                            <span class="text-slate-400 text-sm">Avg Profit / Trip</span>
+                            <span class="font-bold text-emerald-400">₹<span id="avgProfit">0</span></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Table Section -->
+            <div class="premium-card overflow-hidden">
+                <div class="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                    <h2 class="font-bold">Operational Logs</h2>
+                    <span class="text-xs font-semibold px-2 py-1 bg-slate-200 text-slate-600 rounded">RECENT ACTIVITY</span>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left">
+                        <thead class="bg-slate-50 text-slate-500 text-xs font-bold uppercase tracking-wider">
+                            <tr>
+                                <th class="px-6 py-4">Date</th>
+                                <th class="px-6 py-4 text-orange-600">Earnings (₹)</th>
+                                <th class="px-6 py-4 text-rose-600">Expenses (₹)</th>
+                                <th class="px-6 py-4 text-emerald-600">Net Profit (₹)</th>
+                                <th class="px-6 py-4">Trips</th>
+                                <th class="px-6 py-4">Efficiency</th>
+                                <th class="px-6 py-4">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="logTableBody" class="divide-y divide-slate-100">
+                            <!-- Rows will be injected here -->
+                        </tbody>
+                    </table>
+                </div>
+                <div id="noDataPlaceholder" class="p-12 text-center hidden">
+                    <i data-lucide="database" class="w-12 h-12 text-slate-200 mx-auto mb-4"></i>
+                    <p class="text-slate-500">No logs found. Start by adding your first daily metrics.</p>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Right Column: Forms & Goals -->
+        <div class="lg:col-span-4 space-y-8">
+            
+            <!-- Input Form -->
+            <section class="premium-card p-8 border-l-4 border-orange-500">
+                <h2 class="text-2xl font-bold mb-2">Log Daily Activity</h2>
+                <p class="text-slate-500 text-sm mb-6">Enter your daily metrics to update the dashboard.</p>
+                
+                <form id="driverForm" class="space-y-4">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="col-span-2">
+                            <label class="block text-sm font-semibold text-slate-700 mb-1">Daily Earnings (₹)</label>
+                            <input type="number" id="earnings" required min="0" placeholder="e.g. 2500" class="custom-input">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-slate-700 mb-1">Fuel (₹)</label>
+                            <input type="number" id="fuel" required min="0" placeholder="Cost" class="custom-input">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-slate-700 mb-1">Maintenance (₹)</label>
+                            <input type="number" id="maintenance" min="0" value="0" class="custom-input">
+                        </div>
+                        <div class="col-span-2">
+                            <label class="block text-sm font-semibold text-slate-700 mb-1">Other Expenses (₹)</label>
+                            <input type="number" id="otherExp" min="0" value="0" class="custom-input">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-slate-700 mb-1">Num of Trips</label>
+                            <input type="number" id="trips" required min="1" placeholder="Trips" class="custom-input">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-slate-700 mb-1">Zone</label>
+                            <select id="zone" class="custom-input">
+                                <option value="Airport">Airport</option>
+                                <option value="Commercial">Commercial</option>
+                                <option value="Residential">Residential</option>
+                                <option value="Downtown" selected>Downtown</option>
+                            </select>
+                        </div>
+                        <div class="col-span-2">
+                            <label class="block text-sm font-semibold text-slate-700 mb-1">Shift</label>
+                            <select id="shift" class="custom-input">
+                                <option value="Morning">Morning</option>
+                                <option value="Evening" selected>Evening</option>
+                                <option value="Full Day">Full Day</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="pt-4 flex gap-3">
+                        <button type="submit" class="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 rounded-lg transition-all shadow-lg shadow-orange-200">
+                            Update Metrics
+                        </button>
+                        <button type="reset" class="px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg transition-colors">
+                            <i data-lucide="rotate-ccw" class="w-5 h-5"></i>
+                        </button>
+                    </div>
+                </form>
+            </section>
+
+            <!-- Goal Tracker -->
+            <section class="premium-card p-8">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-xl font-bold">Goal Tracker</h2>
+                    <span class="text-orange-500"><i data-lucide="target"></i></span>
+                </div>
+                <div class="space-y-4">
+                    <div>
+                        <div class="flex justify-between text-sm mb-2">
+                            <span class="text-slate-500 font-medium">Daily Target</span>
+                            <span class="font-bold">₹<span id="targetDisplay">3000</span></span>
+                        </div>
+                        <div class="w-full bg-slate-100 rounded-full h-3">
+                            <div id="goalProgress" class="bg-orange-500 h-3 rounded-full transition-all duration-1000" style="width: 0%"></div>
+                        </div>
+                        <p class="text-xs text-slate-400 mt-2 text-right"><span id="goalPercent">0</span>% completed</p>
+                    </div>
+                </div>
+                <div class="mt-6 pt-6 border-t border-slate-100">
+                    <label class="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Adjust Target</label>
+                    <input type="range" id="targetSlider" min="500" max="10000" step="100" value="3000" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-orange-500">
+                </div>
+            </section>
+
+            <!-- AI Intelligence Card -->
+            <section class="premium-card p-6 glass-tips overflow-hidden relative">
+                <div class="absolute top-0 right-0 w-32 h-32 bg-orange-100 rounded-full blur-3xl opacity-50 -mr-16 -mt-16"></div>
+                <h2 class="text-sm font-bold text-orange-600 uppercase tracking-widest mb-4 flex items-center gap-2">
+                    <i data-lucide="sparkles" class="w-4 h-4"></i>
+                    AI Insights
+                </h2>
+                <div id="aiTipsContainer" class="space-y-4">
+                    <!-- Dynamic tips will be injected here -->
+                    <div class="p-4 bg-white/50 border border-orange-100 rounded-xl relative">
+                        <p class="text-slate-700 font-medium text-sm leading-relaxed">No data yet. Start logging your daily trips to unlock smart insights.</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Loss Warning (Hidden by default) -->
+            <div id="lossAlert" class="hidden p-4 bg-rose-50 border border-rose-200 rounded-xl items-center gap-4 animate-bounce">
+                <span class="p-2 bg-rose-100 text-rose-600 rounded-lg"><i data-lucide="alert-triangle"></i></span>
+                <div>
+                    <h4 class="font-bold text-rose-800 text-sm">Critical Warning</h4>
+                    <p class="text-rose-700 text-xs">Today's metrics show a negative net profit. Review expenses immediately.</p>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <footer class="max-w-7xl mx-auto mt-20 pb-10 text-center text-slate-400 text-xs">
+        <p>&copy; 2026 DriveProfit Intelligence Systems. Premium Dashboard for Independent Drivers.</p>
+    </footer>
+
+    <script>
+        // --- State Management ---
+        let logs = JSON.parse(localStorage.getItem('driveProfitLogs')) || [];
+        let dailyTarget = localStorage.getItem('dailyTarget') || 3000;
+        let chartInstance = null;
+
+        // --- DOM Elements ---
+        const form = document.getElementById('driverForm');
+        const totalEarningsEl = document.getElementById('totalEarnings');
+        const totalExpensesEl = document.getElementById('totalExpenses');
+        const totalProfitEl = document.getElementById('totalProfit');
+        const logTableBody = document.getElementById('logTableBody');
+        const noDataPlaceholder = document.getElementById('noDataPlaceholder');
+        const targetDisplay = document.getElementById('targetDisplay');
+        const targetSlider = document.getElementById('targetSlider');
+        const goalProgress = document.getElementById('goalProgress');
+        const goalPercent = document.getElementById('goalPercent');
+        const aiTipsContainer = document.getElementById('aiTipsContainer');
+        const expenseBreakdown = document.getElementById('expenseBreakdown');
+        const lossAlert = document.getElementById('lossAlert');
+        const globalLossBanner = document.getElementById('globalLossBanner');
+        const monthlyProjectionEl = document.getElementById('monthlyProjection');
+        const bestEarningsEl = document.getElementById('bestEarnings');
+        const highestTripsEl = document.getElementById('highestTrips');
+        const avgProfitEl = document.getElementById('avgProfit');
+
+        // --- Initialization ---
+        function init() {
+            lucide.createIcons();
+            targetSlider.value = dailyTarget;
+            targetDisplay.textContent = dailyTarget;
+            updateUI();
+            
+            targetSlider.addEventListener('input', (e) => {
+                dailyTarget = e.target.value;
+                localStorage.setItem('dailyTarget', dailyTarget);
+                targetDisplay.textContent = dailyTarget;
+                updateGoalVisuals();
+            });
+
+            document.getElementById('exportBtn').addEventListener('click', exportToPDF);
+            document.getElementById('resetAllBtn').addEventListener('click', resetData);
+        }
+
+        // --- Core Logic ---
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            
+            const earnings = parseFloat(document.getElementById('earnings').value);
+            const fuel = parseFloat(document.getElementById('fuel').value);
+            const maintenance = parseFloat(document.getElementById('maintenance').value);
+            const other = parseFloat(document.getElementById('otherExp').value);
+            const trips = parseInt(document.getElementById('trips').value);
+            const shift = document.getElementById('shift').value;
+            const zone = document.getElementById('zone').value;
+            const date = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+
+            const totalExp = fuel + maintenance + other;
+            const netProfit = earnings - totalExp;
+
+            const newEntry = {
+                id: Date.now(),
+                date,
+                earnings,
+                fuel,
+                maintenance,
+                other,
+                trips,
+                shift,
+                zone,
+                totalExp,
+                netProfit
+            };
+
+            logs.unshift(newEntry);
+            localStorage.setItem('driveProfitLogs', JSON.stringify(logs));
+            
+            form.reset();
+            updateUI();
+        });
+
+        function updateUI() {
+            renderTable();
+            updateCalculations();
+            renderChart();
+            generateAITips();
+            renderExpenseBreakdown();
+            updateGoalVisuals();
+            updateWeeklyInsights();
+        }
+
+        function updateCalculations() {
+            const totals = logs.reduce((acc, log) => {
+                acc.earnings += log.earnings;
+                acc.expenses += log.totalExp;
+                acc.profit += log.netProfit;
+                return acc;
+            }, { earnings: 0, expenses: 0, profit: 0 });
+
+            totalEarningsEl.textContent = totals.earnings.toLocaleString();
+            totalExpensesEl.textContent = totals.expenses.toLocaleString();
+            totalProfitEl.textContent = totals.profit.toLocaleString();
+
+            // Monthly Projection
+            if (logs.length > 0) {
+                const avgDailyProfit = totals.profit / logs.length;
+                monthlyProjectionEl.textContent = Math.round(avgDailyProfit * 30).toLocaleString();
+            } else {
+                monthlyProjectionEl.textContent = "0";
+            }
+
+            const profitCard = document.getElementById('profitCard');
+            const profitIconBg = document.getElementById('profitIconBg');
+            const profitIcon = document.getElementById('profitIcon');
+
+            // Reset classes
+            profitCard.classList.remove('stat-card-red', 'stat-card-green', 'pulse-alert', 'shake');
+
+            if (totals.profit < 0) {
+                profitCard.classList.add('stat-card-red', 'pulse-alert');
+                profitIconBg.classList.replace('bg-emerald-50', 'bg-rose-50');
+                profitIconBg.classList.replace('text-emerald-500', 'text-rose-500');
+                profitIcon.setAttribute('data-lucide', 'trending-down');
+            } else {
+                profitCard.classList.add('stat-card-green');
+                profitIconBg.classList.replace('bg-rose-50', 'bg-emerald-50');
+                profitIconBg.classList.replace('text-rose-500', 'text-emerald-500');
+                profitIcon.setAttribute('data-lucide', 'trending-up');
+            }
+            lucide.createIcons();
+
+            // Today's loss alert
+            if (logs.length > 0 && logs[0].netProfit < 0) {
+                lossAlert.classList.remove('hidden');
+                globalLossBanner.classList.remove('hidden');
+                profitCard.classList.add('shake');
+            } else {
+                lossAlert.classList.add('hidden');
+                globalLossBanner.classList.add('hidden');
+            }
+        }
+
+        function renderTable() {
+            if (logs.length === 0) {
+                logTableBody.innerHTML = '';
+                noDataPlaceholder.classList.remove('hidden');
+                return;
+            }
+
+            noDataPlaceholder.classList.add('hidden');
+            logTableBody.innerHTML = logs.map((log, index) => `
+                <tr class="hover:bg-slate-50 transition-colors animate-fade-in" style="animation-delay: ${index * 0.05}s">
+                    <td class="px-6 py-4">
+                        <div class="text-sm font-semibold">${log.date}</div>
+                        <div class="text-xs text-slate-400 capitalize">${log.shift} • ${log.zone}</div>
+                    </td>
+                    <td class="px-6 py-4 font-bold text-slate-700">₹${log.earnings.toLocaleString()}</td>
+                    <td class="px-6 py-4 font-medium text-slate-500">₹${log.totalExp.toLocaleString()}</td>
+                    <td class="px-6 py-4">
+                        <span class="px-2 py-1 rounded text-xs font-bold ${log.netProfit >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}">
+                            ₹${log.netProfit.toLocaleString()}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4 font-medium text-slate-600">${log.trips}</td>
+                    <td class="px-6 py-4">
+                        <div class="text-xs font-semibold text-slate-700">₹${Math.round(log.netProfit / log.trips)} / trip</div>
+                    </td>
+                    <td class="px-6 py-4">
+                        <button onclick="deleteRow(${log.id})" class="text-slate-300 hover:text-rose-500 transition-colors">
+                            <i data-lucide="x-circle" class="w-5 h-5"></i>
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+            lucide.createIcons();
+        }
+
+        function renderChart() {
+            const ctx = document.getElementById('performanceChart').getContext('2d');
+            const displayLogs = [...logs].reverse().slice(-7); // Last 7 entries
+
+            const labels = displayLogs.map(l => l.date);
+            const earningsData = displayLogs.map(l => l.earnings);
+            const expensesData = displayLogs.map(l => l.totalExp);
+            const profitData = displayLogs.map(l => l.netProfit);
+
+            if (chartInstance) {
+                chartInstance.destroy();
+            }
+
+            chartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels,
+                    datasets: [
+                        { label: 'Earnings', data: earningsData, backgroundColor: '#f97316', borderRadius: 6, maxBarThickness: 40 },
+                        { label: 'Expenses', data: expensesData, backgroundColor: '#f43f5e', borderRadius: 6, maxBarThickness: 40 },
+                        { label: 'Profit', data: profitData, backgroundColor: '#10b981', borderRadius: 6, maxBarThickness: 40 }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { 
+                        legend: { display: true, position: 'top', labels: { boxWidth: 10, font: { size: 10, weight: 'bold' } } },
+                        title: { display: true, text: 'Daily Performance Overview', font: { size: 16, weight: 'bold' }, padding: { bottom: 20 } },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) label += ': ';
+                                    if (context.parsed.y !== null) {
+                                        label += new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(context.parsed.y);
+                                    }
+                                    return label;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { grid: { display: false }, border: { display: false } },
+                        y: { 
+                            beginAtZero: true, 
+                            grid: { color: '#f1f5f9' }, 
+                            border: { display: false },
+                            ticks: {
+                                callback: function(value) { return '₹' + value.toLocaleString(); }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function renderExpenseBreakdown() {
+            if (logs.length === 0) return;
+            const last = logs[0];
+            const fuelPct = ((last.fuel / last.earnings) * 100).toFixed(0);
+            const mainPct = ((last.maintenance / last.earnings) * 100).toFixed(0);
+            const otherPct = ((last.other / last.earnings) * 100).toFixed(0);
+            const savingsPct = ((last.netProfit / last.earnings) * 100).toFixed(0);
+
+            expenseBreakdown.innerHTML = `
+                <div>
+                    <div class="flex justify-between text-xs font-bold mb-1"><span>FUEL</span> <span>${fuelPct}%</span></div>
+                    <div class="w-full bg-slate-100 h-2 rounded-full"><div class="bg-orange-400 h-2 rounded-full" style="width: ${fuelPct}%"></div></div>
+                </div>
+                <div>
+                    <div class="flex justify-between text-xs font-bold mb-1"><span>MAINTENANCE</span> <span>${mainPct}%</span></div>
+                    <div class="w-full bg-slate-100 h-2 rounded-full"><div class="bg-slate-400 h-2 rounded-full" style="width: ${mainPct}%"></div></div>
+                </div>
+                <div>
+                    <div class="flex justify-between text-xs font-bold mb-1"><span>OTHER</span> <span>${otherPct}%</span></div>
+                    <div class="w-full bg-slate-100 h-2 rounded-full"><div class="bg-slate-300 h-2 rounded-full" style="width: ${otherPct}%"></div></div>
+                </div>
+                <div class="pt-2">
+                    <div class="flex justify-between text-xs font-bold mb-1 text-emerald-600"><span>NET SAVINGS</span> <span>${savingsPct}%</span></div>
+                    <div class="w-full bg-slate-100 h-2 rounded-full"><div class="bg-emerald-500 h-2 rounded-full" style="width: ${savingsPct}%"></div></div>
+                </div>
+            `;
+        }
+
+        function generateAITips() {
+            if (logs.length === 0) return;
+            const last = logs[0];
+            const tips = [];
+
+            // Rule-Based Intelligence
+            if (last.fuel > (last.earnings * 0.4)) {
+                tips.push("⚠️ High fuel cost detected. Try optimizing routes or switching to fuel-efficient driving.");
+            }
+            if (last.trips < 5) {
+                tips.push("📉 Low trip count. Consider driving during peak hours (7–9 AM, 5–8 PM).");
+            }
+            if (last.netProfit > (last.earnings * 0.6)) {
+                tips.push("✅ Great performance! Your profit margin is strong today.");
+            }
+            if (last.netProfit < 0) {
+                tips.push("🚨 You are running at a loss today. Reduce expenses or increase trips.");
+            }
+
+            // Peak Time Recommendations
+            if (last.shift === 'Morning') {
+                tips.push("🌅 Morning shifts are good for office commute rides. Focus on residential to commercial areas.");
+            } else if (last.shift === 'Evening') {
+                tips.push("🌆 Evening peak hours increase ride demand for returns. Stay close to office hubs.");
+            }
+
+            // Logic for suggestions if profit is low
+            if (last.netProfit < (last.earnings * 0.2) && tips.length < 3) {
+                tips.push("💡 Profit improvement: Try driving during peak morning hours (7–9 AM) for better surge earnings.");
+            }
+
+            // Default generic tips if no data triggers specific ones
+            if (tips.length === 0) {
+                tips.push("Steady performance. Keep your driver rating high to stay priority for upcoming bookings.");
+                tips.push("Consider driving during the rain; surging demand usually follows weather changes.");
+            }
+
+            aiTipsContainer.innerHTML = tips.map(tip => `
+                <div class="p-4 bg-white/50 border border-orange-100 rounded-xl relative hover:bg-white transition-all">
+                    <p class="text-slate-700 font-medium text-sm leading-relaxed">${tip}</p>
+                </div>
+            `).join('');
+        }
+
+        function updateGoalVisuals() {
+            if (logs.length === 0) {
+                goalProgress.style.width = '0%';
+                goalPercent.textContent = '0';
+                return;
+            }
+            
+            // Calculate today's earnings sum (if multiple entries allowed per day, but logic here assumes entries are daily entries)
+            const todayAmt = logs[0].earnings;
+            const pct = Math.min(100, Math.round((todayAmt / dailyTarget) * 100));
+            goalProgress.style.width = pct + '%';
+            goalPercent.textContent = pct;
+        }
+
+        function updateWeeklyInsights() {
+            if (logs.length === 0) return;
+            const earnings = logs.map(l => l.earnings);
+            const trips = logs.map(l => l.trips);
+            const avgProfPerTrip = logs.reduce((sum, l) => sum + (l.netProfit / l.trips), 0) / logs.length;
+
+            bestEarningsEl.textContent = Math.max(...earnings).toLocaleString();
+            highestTripsEl.textContent = Math.max(...trips);
+            avgProfitEl.textContent = Math.round(avgProfPerTrip).toLocaleString();
+        }
+
+        function deleteRow(id) {
+            logs = logs.filter(l => l.id !== id);
+            localStorage.setItem('driveProfitLogs', JSON.stringify(logs));
+            updateUI();
+        }
+
+        function resetData() {
+            if (confirm('Are you sure you want to clear all data? This cannot be undone.')) {
+                logs = [];
+                localStorage.removeItem('driveProfitLogs');
+                updateUI();
+            }
+        }
+
+        function exportToPDF() {
+            if (logs.length === 0) return alert('No data to export.');
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            
+            doc.text('DriveProfit - Earnings Report', 14, 15);
+            
+            const headers = [['Date', 'Earnings', 'Fuel', 'Maintenance', 'Other', 'Total Exp.', 'Net Profit', 'Trips', 'Shift', 'Zone']];
+            const rows = logs.map(l => [
+                l.date, `Rs. ${l.earnings}`, `Rs. ${l.fuel}`, `Rs. ${l.maintenance}`, `Rs. ${l.other}`, `Rs. ${l.totalExp}`, `Rs. ${l.netProfit}`, l.trips, l.shift, l.zone
+            ]);
+
+            doc.autoTable({
+                head: headers,
+                body: rows,
+                startY: 20,
+                theme: 'striped',
+                styles: { fontSize: 8 },
+                headStyles: { fillColor: [249, 115, 22] } // Orange 500 matching DriveProfit theme
+            });
+
+            doc.save(`driveprofit_logs_${new Date().toISOString().split('T')[0]}.pdf`);
+        }
+
+        // Start App
+        init();
+    </script>
+</body>
+</html>
+
